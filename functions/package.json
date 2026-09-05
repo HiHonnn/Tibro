@@ -1,0 +1,22 @@
+{
+  "name": "tibro-auth-service",
+  "version": "1.0.0",
+  "description": "Authentication and OTP service for Tibro",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "node index.js",
+    "check": "node --check index.js"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.0.0",
+    "cors": "^2.8.5",
+    "dotenv": "^17.4.2",
+    "express": "^5.1.0",
+    "livekit-server-sdk": "^2.18.0",
+    "nodemailer": "^9.0.1"
+  }
+}

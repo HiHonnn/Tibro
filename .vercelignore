@@ -1,0 +1,12 @@
+# Ignore everything by default
+*
+
+# But do NOT ignore the functions folder and its contents
+!functions/
+!functions/**
+
+# Ignore node_modules inside functions (Vercel will install them)
+functions/node_modules
+
+# Allow vercel.json if it's needed
+!vercel.json

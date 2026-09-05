@@ -1,0 +1,437 @@
+@startuml "Bump_UseCase_Detailed"
+left to right direction
+skinparam packageStyle rectangle
+skinparam usecase {
+    BackgroundColor LightCyan
+    BorderColor DarkBlue
+    ArrowColor DarkBlue
+}
+
+actor "Người dùng (User)" as U
+actor "Quản trị viên (Admin)" as A
+
+package "Hệ thống Mạng Xã Hội Bump" {
+
+    package "1. Xác thực & Hồ sơ (Auth & Profile)" {
+        usecase "Đăng ký / Đăng nhập OTP" as UC1
+        usecase "Quên mật khẩu (Reset OTP)" as UC1_1
+        usecase "Đăng xuất" as UC1_2
+        usecase "Cập nhật Hồ sơ cá nhân" as UC2
+        usecase "Thay đổi Avatar" as UC2_1
+    }
+
+    package "2. Bản đồ & Vị trí (Map & Location)" {
+        usecase "Chia sẻ Vị trí Real-time" as UC3
+        usecase "Bật/Tắt Ẩn danh (Ghost Mode)" as UC4
+        usecase "Xem Bản đồ & Marker Bạn bè" as UC5
+        usecase "Xem Lịch sử di chuyển của mình" as UC5_1
+        usecase "Xem Lịch sử di chuyển Bạn bè (24h)" as UC5_2
+        usecase "Quét Radar (Tìm bạn quanh đây)" as UC6
+    }
+
+    package "3. Mạng xã hội & Tương tác (Social)" {
+        usecase "Tìm kiếm người dùng" as UC_F1
+        usecase "Gửi / Nhận lời mời kết bạn" as UC_F2
+        usecase "Huỷ kết bạn" as UC_F3
+        usecase "Đăng Khoảnh khắc (Moment 24h)" as UC7
+        usecase "Thả cảm xúc (React Moment)" as UC8
+        usecase "Bắn Emoji trên Bản đồ (Pop)" as UC9
+    }
+
+    package "4. Giao tiếp & Trò chuyện (Chat & Call)" {
+        usecase "Chat 1-1 & Gửi ảnh" as UC10
+        usecase "Gọi Thoại / Gọi Video" as UC11
+        usecase "Gặp mặt trực tiếp (Bump) tăng điểm" as UC12
+    }
+
+    package "5. Hệ thống & Quản trị (Admin Panel)" {
+        usecase "Báo cáo vi phạm" as UC13
+        usecase "Đăng nhập Admin" as AC1
+        usecase "Xem Thống kê Hệ thống" as AC2
+        usecase "Quản lý Người dùng (Xoá, Ban)" as AC3
+        usecase "Duyệt Báo cáo vi phạm" as AC4
+        usecase "Bật/Tắt Chế độ Bảo trì" as AC5
+    }
+}
+
+' Liên kết User
+U --> UC1
+U --> UC1_1
+U --> UC1_2
+U --> UC2
+U --> UC2_1
+U --> UC3
+U --> UC4
+U --> UC5
+U --> UC5_1
+U --> UC5_2
+U --> UC6
+U --> UC_F1
+U --> UC_F2
+U --> UC_F3
+U --> UC7
+U --> UC8
+U --> UC9
+U --> UC10
+U --> UC11
+U --> UC12
+U --> UC13
+
+' Liên kết Admin
+A --> AC1
+A --> AC2
+A --> AC3
+A --> AC4
+A --> AC5
+
+@enduml
+
+' =====================================================================
+' SEQUENCE DIAGRAM 1: ĐĂNG KÝ VÀ XÁC THỰC OTP
+' =====================================================================
+@startuml "Seq_Register_OTP"
+actor "Người dùng" as U
+participant "Bump App" as App
+participant "Node.js Server" as Node
+participant "Gmail SMTP" as Mail
+participant "Supabase Auth" as Auth
+database "Supabase DB" as DB
+
+U -> App: Nhập Email & Bấm "Gửi OTP"
+App -> Node: POST /sendOtp {email}
+Node -> Mail: Gửi mã OTP 6 số
+Mail --> U: Nhận Email chứa OTP
+Node --> App: HTTP 200 (Thành công)
+App --> U: Hiển thị form nhập OTP
+
+U -> App: Nhập mã OTP
+App -> Node: POST /verifyOtp {email, otp}
+Node -> DB: Kiểm tra OTP hợp lệ?
+DB --> Node: Hợp lệ
+Node --> App: {verified: true}
+
+App -> Auth: signUp({email, password})
+Auth --> App: Trả về Session & UUID
+App -> DB: INSERT INTO public.users (Profile)
+DB --> App: Success
+App --> U: Đăng nhập thành công, chuyển tới Bản đồ
+@enduml
+
+' =====================================================================
+' SEQUENCE DIAGRAM 2: QUÊN MẬT KHẨU (RESET PASSWORD)
+' =====================================================================
+@startuml "Seq_Forgot_Password"
+actor "Người dùng" as U
+participant "Bump App" as App
+participant "Node.js Server" as Node
+participant "Supabase Admin API" as SupaAPI
+
+U -> App: Chọn "Quên mật khẩu", Nhập Email
+App -> Node: POST /sendOtp {email, type: 'recovery'}
+Node --> App: Lấy mã OTP (Qua Nodemailer)
+U -> App: Nhập OTP & Mật khẩu mới
+App -> Node: POST /verifyOtp (recovery)
+Node --> App: Verified
+App -> Node: POST /resetPassword {email, newPassword}
+Node -> SupaAPI: auth.admin.updateUserById(uid, {password})
+SupaAPI --> Node: Thành công
+Node --> App: Thành công
+App --> U: Thông báo đổi mật khẩu thành công -> Quay về Login
+@enduml
+
+' =====================================================================
+' SEQUENCE DIAGRAM 3: CHIA SẺ VỊ TRÍ VÀ HIỂN THỊ BẢN ĐỒ
+' =====================================================================
+@startuml "Seq_Location_Realtime"
+actor "Người dùng" as U
+participant "Bump App" as App
+participant "Device GPS" as GPS
+database "Supabase DB" as DB
+
+U -> App: Mở ứng dụng, cấp quyền Vị trí
+loop Mỗi 10 giây (khi App Active)
+    App -> GPS: Lấy tọa độ (latitude, longitude)
+    GPS --> App: {lat, lng}
+    App -> DB: UPSERT user_locations {lat, lng, is_sharing: true}
+end
+
+loop Lấy vị trí Bạn bè
+    App -> DB: SELECT locations WHERE user_id IN (friends) AND is_sharing = true
+    DB --> App: Danh sách tọa độ mới nhất của Bạn bè
+    App --> U: Cập nhật vị trí các Marker trên Bản đồ
+end
+@enduml
+
+' =====================================================================
+' SEQUENCE DIAGRAM 4: LƯU VÀ XEM LỊCH SỬ DI CHUYỂN
+' =====================================================================
+@startuml "Seq_Location_History"
+actor "Người dùng A" as A
+participant "Bump App (A)" as AppA
+database "Supabase DB" as DB
+participant "Bump App (B)" as AppB
+actor "Bạn bè B" as B
+
+loop Chạy ngầm / Mở app (Cách nhau >100m hoặc >3p)
+    AppA -> DB: INSERT INTO location_history {user_id, lat, lng}
+end
+
+B -> AppB: Vào trang Lịch sử di chuyển của A
+AppB -> DB: Lấy setting Privacy của A (Từ DB location_history ảo)
+DB --> AppB: Lịch sử ĐANG BẬT
+AppB -> DB: SELECT * FROM location_history WHERE user_id = A (Trong 24h)
+DB --> AppB: Danh sách điểm (Points)
+AppB -> AppB: Gom các điểm gần nhau thành Session
+AppB --> B: Vẽ lộ trình (Polyline) và các điểm dừng (Markers)
+@enduml
+
+' =====================================================================
+' SEQUENCE DIAGRAM 5: TÌM KIẾM NGƯỜI LẠ (RADAR HAVERSINE)
+' =====================================================================
+@startuml "Seq_Radar_Nearby"
+actor "Người dùng" as U
+participant "Bump App" as App
+participant "Location Service" as LocSvc
+participant "Nearby Service" as RadarSvc
+database "Supabase DB" as DB
+
+U -> App: Mở tab Radar
+App -> LocSvc: Lấy tọa độ hiện tại của User
+LocSvc --> App: {myLat, myLng}
+
+App -> RadarSvc: findNearbyStrangers(myLat, myLng, 20m)
+RadarSvc -> DB: Lấy danh sách ID Bạn bè
+DB --> RadarSvc: [friend_id_1, friend_id_2]
+
+RadarSvc -> DB: Query user_locations bằng Bounding Box (sai số GPS)
+DB --> RadarSvc: Danh sách user ở khu vực lân cận
+
+RadarSvc -> RadarSvc: Tính khoảng cách chính xác bằng công thức Haversine
+RadarSvc -> RadarSvc: Loại bỏ những người đã là Bạn bè hoặc > 20m
+RadarSvc -> DB: Lấy thông tin Profile (Name, Avatar) của người lạ
+DB --> RadarSvc: Danh sách Profile
+RadarSvc --> App: Danh sách người lạ + Khoảng cách (đã sắp xếp)
+App --> U: Hiển thị danh sách trên màn hình Radar
+@enduml
+
+' =====================================================================
+' SEQUENCE DIAGRAM 6: GỬI LỜI MỜI VÀ KẾT BẠN
+' =====================================================================
+@startuml "Seq_Friend_Request"
+actor "User A" as A
+participant "Bump App" as App
+database "Supabase DB" as DB
+actor "User B" as B
+
+A -> App: Bấm "Thêm bạn bè" User B
+App -> DB: INSERT INTO friends {requester_id: A, receiver_id: B, status: pending}
+DB --> App: Thành công
+App -> DB: Bắn Notification đến B
+B -> App: Mở tab Lời mời kết bạn
+App -> DB: SELECT friends WHERE receiver_id = B
+DB --> App: Danh sách lời mời
+B -> App: Bấm "Chấp nhận"
+App -> DB: UPDATE friends SET status = 'accepted'
+DB --> App: Thành công, 2 người trở thành bạn bè và thấy nhau trên Map
+@enduml
+
+' =====================================================================
+' SEQUENCE DIAGRAM 7: ĐĂNG KHOẢNH KHẮC (MOMENT) VÀ NÉN ẢNH
+' =====================================================================
+@startuml "Seq_Moment_Post"
+actor "Người dùng" as U
+participant "Bump App" as App
+participant "Image Manipulator" as Img
+participant "Supabase Storage" as Storage
+database "Supabase DB" as DB
+
+U -> App: Chụp ảnh / Chọn ảnh từ thư viện
+U -> App: Bấm "Đăng Moment"
+App -> Img: Nén ảnh (giảm chất lượng 70%, resize 1080p)
+Img --> App: URI ảnh đã nén
+App -> Storage: Upload file ảnh (FormData) vào bucket 'moments'
+Storage --> App: Trả về public_url
+App -> DB: INSERT INTO moments {image_url, lat, lng, created_at}
+DB --> App: Thành công
+App --> U: Hiển thị Moment lên Bản đồ (Tồn tại 24h)
+@enduml
+
+' =====================================================================
+' SEQUENCE DIAGRAM 8: BẮN EMOJI TRÊN BẢN ĐỒ (POP)
+' =====================================================================
+@startuml "Seq_Pop_Emoji"
+actor "User A" as A
+participant "Bump App (A)" as AppA
+database "Supabase DB" as DB
+participant "Notification Service" as Notif
+participant "Bump App (B)" as AppB
+actor "User B" as B
+
+A -> AppA: Bấm liên tục vào icon Emoji (VD: 10 lần)
+AppA -> DB: INSERT INTO map_pops {sender_id, receiver_id, emoji, count: 10}
+DB --> AppA: Thành công
+AppA -> Notif: Tạo Notification (type = 'emoji_pop')
+Notif -> DB: INSERT INTO notifications
+
+B -> AppB: Mở bản đồ
+AppB -> DB: Polling getUnseenPops()
+DB --> AppB: Trả về Emoji Pops chưa xem
+AppB -> AppB: Chạy Animation "Emoji Rain" (Rơi từ trên xuống)
+AppB -> DB: UPDATE map_pops SET is_seen = true
+AppB --> B: Trải nghiệm tương tác vật lý sinh động
+@enduml
+
+' =====================================================================
+' SEQUENCE DIAGRAM 9: CHAT 1-1 VÀ CỘNG ĐIỂM THÂN MẬT
+' =====================================================================
+@startuml "Seq_Chat_Intimacy"
+actor "User A" as A
+participant "Bump App (A)" as AppA
+database "Supabase DB" as DB
+participant "Supabase Realtime" as WS
+participant "Bump App (B)" as AppB
+actor "User B" as B
+
+A -> AppA: Gửi tin nhắn "Hello"
+AppA -> DB: INSERT INTO messages {conversation_id, sender_id, content}
+DB -> DB: Trigger cập nhật last_message của conversation
+DB --> AppA: Tin nhắn đã lưu
+
+AppA -> DB: UPSERT friendship_intimacy (Cộng 1 điểm, giới hạn 20đ/ngày)
+
+DB -> WS: Bắn event (Postgres Changes)
+WS -> AppB: Nhận event INSERT message mới
+AppB --> B: Hiển thị tin nhắn "Hello" trên màn hình Chat
+@enduml
+
+' =====================================================================
+' SEQUENCE DIAGRAM 10: GỌI ĐIỆN (API + WEBRTC, DỰ KIẾN)
+' =====================================================================
+@startuml "Seq_WebRTC_Call"
+actor "User A" as A
+participant "Tibro App (A)" as AppA
+participant "Tibro Call API" as API
+participant "WebRTC SFU" as SFU
+participant "Tibro App (B)" as AppB
+actor "User B" as B
+
+A -> AppA: Bấm nút Gọi Video cho B
+AppA -> API: POST /calls (conversationId)
+API -> API: Kiểm tra quyền thành viên và tạo phòng
+API --> AppA: callId + token ngắn hạn
+API -> AppB: Gửi tín hiệu có cuộc gọi đến
+AppB --> B: Hiển thị màn hình chuông reo (Incoming Call)
+B -> AppB: Bấm Chấp nhận
+AppB -> API: POST /calls/{callId}/join
+API -> API: Kiểm tra quyền thành viên
+API --> AppB: token ngắn hạn
+AppA -> SFU: Kết nối bằng token
+AppB -> SFU: Kết nối bằng token
+SFU --> AppA: User B đã tham gia
+SFU --> AppB: Bắt đầu truyền phát
+A <--> B: Đang trò chuyện Video
+A -> AppA: Bấm kết thúc cuộc gọi
+AppA -> API: POST /calls/{callId}/end
+API -> SFU: Đóng phòng
+API -> AppB: Cập nhật trạng thái kết thúc
+@enduml
+
+' =====================================================================
+' SEQUENCE DIAGRAM 11: GẶP MẶT (BUMP) VÀ TĂNG THÂN MẬT
+' =====================================================================
+@startuml "Seq_Bump_Action"
+actor "Người dùng" as U
+participant "Bump App" as App
+participant "Intimacy Service" as IntSvc
+participant "Notification Service" as NotifSvc
+database "Supabase DB" as DB
+
+U -> App: Bấm nút "Bump!" vào profile bạn bè
+App -> IntSvc: performBump(friend_id)
+IntSvc -> DB: Lấy dữ liệu thân mật (Kiểm tra last_bumped_at)
+DB --> IntSvc: Thông tin điểm hiện tại
+
+alt Đã Bump trong ngày hôm nay
+    IntSvc --> App: Lỗi (Chỉ được Bump 1 lần/ngày)
+    App --> U: Hiển thị "Hôm nay đã chạm rồi!"
+else Chưa Bump trong ngày
+    IntSvc -> DB: UPSERT friendship_intimacy (score + 50, update last_bumped_at)
+    DB --> IntSvc: Điểm mới
+    IntSvc -> DB: INSERT INTO notifications (Báo cho người kia)
+    IntSvc --> App: Thành công (Tăng 50 điểm)
+    App --> U: Animation cháy nổ, thông báo lên cấp (nếu có)
+end
+@enduml
+
+' =====================================================================
+' SEQUENCE DIAGRAM 12: XỬ LÝ VI PHẠM TỪ ADMIN (FLUTTER)
+' =====================================================================
+@startuml "Seq_Admin_Ban"
+actor "Admin" as A
+participant "Admin App (Flutter)" as AdminApp
+participant "Supabase Admin API" as AdminAPI
+database "Supabase DB" as DB
+participant "Bump App (User B)" as AppB
+actor "User B (Bị Ban)" as B
+
+A -> AdminApp: Xem báo cáo vi phạm
+AdminApp -> DB: Lấy danh sách Reports
+DB --> AdminApp: Hiển thị report của User B
+A -> AdminApp: Bấm "Khóa tài khoản (Ban)" User B
+AdminApp -> DB: UPDATE users SET is_banned = true WHERE id = UserB_ID
+DB --> AdminApp: Success
+
+B -> AppB: Mở ứng dụng Bump
+AppB -> DB: checkAppState() -> SELECT is_banned
+DB --> AppB: is_banned = true
+AppB -> AdminAPI: auth.signOut()
+AppB --> B: Chuyển hướng ra màn hình Bị Cấm (BannedScreen) + Nút gửi email khiếu nại
+@enduml
+
+' =====================================================================
+' SEQUENCE DIAGRAM 13: ADMIN ĐĂNG THÔNG BÁO HỆ THỐNG
+' =====================================================================
+@startuml "Seq_Admin_Announcement"
+actor "Admin" as A
+participant "Admin App (Flutter)" as AdminApp
+database "Supabase DB" as DB
+participant "Bump App (Users)" as App
+
+A -> AdminApp: Mở màn hình Quản lý Thông báo
+A -> AdminApp: Nhập Tiêu đề, Nội dung, Loại (Info, Warning...)
+A -> AdminApp: Bấm "Tạo thông báo"
+AdminApp -> DB: INSERT INTO system_announcements {title, message, type, is_active: true}
+DB --> AdminApp: Success
+AdminApp --> A: Hiển thị thông báo đã tạo thành công
+
+App -> DB: Polling / Fetch danh sách thông báo (getAnnouncements)
+DB --> App: Trả về thông báo mới nhất
+App --> App: Hiển thị Banner thông báo trên giao diện
+@enduml
+
+' =====================================================================
+' SEQUENCE DIAGRAM 14: ADMIN BẬT/TẮT CHẾ ĐỘ BẢO TRÌ
+' =====================================================================
+@startuml "Seq_Admin_Maintenance"
+actor "Admin" as A
+participant "Admin App (Flutter)" as AdminApp
+database "Supabase DB" as DB
+participant "Bump App (Users)" as App
+actor "Người dùng" as U
+
+A -> AdminApp: Bấm nút "Bảo trì hệ thống" trên Dashboard
+AdminApp -> AdminApp: Hiển thị Dialog nhập Lời nhắn & Thời gian dự kiến
+A -> AdminApp: Nhập thông tin và bấm "Bật bảo trì"
+AdminApp -> DB: UPDATE system_config SET value = {enabled: true, message, estimated_time} WHERE key = 'maintenance'
+DB --> AdminApp: Success
+AdminApp --> A: Hiển thị trạng thái Đang bảo trì
+
+U -> App: Đang sử dụng App
+App -> DB: Lắng nghe AppState / Polling định kỳ mỗi 30s kiểm tra system_config
+DB --> App: value.enabled = true
+App -> App: Ngừng các hoạt động hiện tại
+App --> U: Chuyển hướng ép buộc sang màn hình Maintenance (Chỉ có nút Thử lại)
+U -> App: Bấm "Thử lại"
+App -> DB: Kiểm tra lại system_config
+DB --> App: Nếu vẫn true -> Giữ ở màn hình.\nNếu false -> Vào app bình thường.
+@enduml
